@@ -5,10 +5,11 @@
 from tkinter import *
 import time
 import datetime
-from env_canada import ECData
+from env_canada import ECWeather
 import feedparser
 import requests
 import json
+import asyncio
 
 # clock Updater
 
@@ -26,7 +27,11 @@ def weather_page():
     
     days = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
     months = [" ", "JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"] 
-    
+  
+    #
+    ### Create summary forecast
+    #
+
     # read in day1 text summary forecast
     wsum_day1 = ec_en.conditions["text_summary"]["value"] 
     
@@ -67,9 +72,16 @@ def weather_page():
 
     s = wsum_day1.upper() + w_pad_day1 + wsum_day2.upper() + w_pad_day2 + wsum_day3.upper() + w_pad_day3 + wsum_day4.upper() + w_pad_day4 + wsum_day5.upper()
     
+
+    #
+    ### Update middle screen info
+    #
+
     if time_sec < 30:
+
         weathercol = "Blue"
         if (time_min % 2) == 0: # screen 1 -- text summary forecasts
+            print(time.strftime("%H:%M:%S"), 'Displaying screen 1 - forecast summary part 1')
         
             s1 = s[:35]
             s2 = s[35:70]
@@ -80,46 +92,95 @@ def weather_page():
             s7 = s[210:245]
             s8 = s[245:280]
         else: # screen 3 -- Today's day/date + specific weather conditions
-            print(ec_en.forecast_time)
-            day = datetime.datetime.today().weekday()
-            # month = datetime.datetime.today().month
-            month = int(ec_en.forecast_time[4:6])
-            if (int(ec_en.forecast_time[8:10]) > 12):
-                w_time = int(ec_en.forecast_time[8:10]) - 12
+            print(time.strftime("%H:%M:%S"), 'Displaying screen 3 - current weather')
+               
+            ######################
+            # S1 Today's Weather
+            ######################
+
+            today = datetime.datetime.today()
+            year    = str(today.year)
+            month   = str(today.month)
+            day     = str(today.day)
+            weekday = today.weekday()
+
+            # forecast time is a datetime.datetime
+            minute = str(ec_en.forecast_time.minute).zfill(2)
+            hour = ec_en.forecast_time.hour
+            if (hour > 12):
+                hour = str(hour - 12)
                 ampm = "PM"
             else:
-                w_time = int(ec_en.forecast_time[8:10])
+                hour = str(hour)
                 ampm = "AM"
-                
-            tendency = ec_en.conditions["tendency"]["value"]
-            
-            s1 = "WINNIPEG - " + days[day] + ", " + months[month] + "." + ec_en.forecast_time[6:8] + "/" + ec_en.forecast_time[:4] + " " + str(w_time) + ":" + ec_en.forecast_time[10:12] + " " + ampm
+
+            # s1 example: "WINNIPEG - FRI,FEB.14/2020"
+            s1 = station_name.upper() + " - " + days[weekday] + ", " + months[int(month)] + "." + day + "/" + year + " " + hour + ":" + minute + " " + ampm
+
+            ######################
+            # S2 Today's Weather
+            ######################
             s2 = " "
+
+            ##########################
+            # S3 & S4 Today's Weather
+            ##########################
+
+            temp_c       = str(ec_en.conditions["temperature"]["value"])
+            tendency     = ec_en.conditions["tendency"]["value"]
             if "value" in ec_en.conditions["wind_chill"]:
-                s3 = "TEMP " + ec_en.conditions["temperature"]["value"] + "C (FEELS LIKE " + ec_en.conditions["wind_chill"]["value"] + "C)"
+                wind_chill_c = ec_en.conditions["wind_chill"]["value"]
+                if wind_chill_c:
+                    wind_chill_c = str(wind_chill_c)
+                    s3 = "TEMP " + temp_c + "C (FEELS LIKE " + wind_chill_c + "C)"
+                else:
+                    s3 = "TEMP " + temp_c + "C"
                 s4 = ".. AND " + tendency.upper()
             else:
-                s3 = "TEMPERATURE " + ec_en.conditions["temperature"]["value"] + "C" + " .. AND " + tendency.upper()
+                s3 = "TEMPERATURE " + temp_c + "C" + " .. AND " + tendency.upper()
                 s4 = ""
-            s5 = "HIGH OF " + ec_en.conditions["high_temp"]["value"] + "C     " + "LOW OF " + ec_en.conditions["low_temp"]["value"] + "C"
+
+            ######################
+            # S5 Today's Weather
+            ######################
+            
+            high_of_c = str(ec_en.conditions["high_temp"]["value"])
+            low_of_c  = str(ec_en.conditions["low_temp"]["value"])
+            s5 = "HIGH OF " + high_of_c + "C     " + "LOW OF " + low_of_c + "C"
+
+            #############################
+            # S6, S7, S8 Today's Weather
+            #############################
+
+            humidity     = str(ec_en.conditions["humidity"]["value"])
+            dewpoint_c   = str(ec_en.conditions["dewpoint"]["value"])
+            pressure_kpa = str(ec_en.conditions["pressure"]["value"])
+
+            humidity_dewpoint_line = "HUMIDITY " + humidity + "%    DEWPOINT " + dewpoint_c + "C"
+            pressure_line          = "PRESSURE " + pressure_kpa + "KPA"
+
             if "value" in ec_en.conditions["wind_dir"]:
-                s6 = "WIND " + ec_en.conditions["wind_dir"]["value"] + " " + ec_en.conditions["wind_speed"]["value"] + " KMH   VISIBILITY " + ec_en.conditions["visibility"]["value"] + "KM"
-                s7 = "HUMIDITY " + ec_en.conditions["humidity"]["value"] + "%    DEWPOINT " + ec_en.conditions["dewpoint"]["value"] + "C"
-                s8 = "PRESSURE " + ec_en.conditions["pressure"]["value"] + "KPA"
+                wind_dir       = str(ec_en.conditions["wind_dir"]["value"])
+                wind_speed_kph = str(ec_en.conditions["wind_speed"]["value"])
+                visibility_km  = str(ec_en.conditions["visibility"]["value"])
+                s6 = "WIND " + wind_dir + " " + wind_speed_kph + " KMH   VISIBILITY " + visibility_km + "KM"
+                s7 = humidity_dewpoint_line 
+                s8 = pressure_line
+            elif "value" in ec_en.conditions["visibility"]:
+                visibility_km  = str(ec_en.conditions["visibility"]["value"])
+                s6 = "VISIBILITY " + visibility_km + "KM"
+                s7 = humidity_dewpoint_line 
+                s8 = pressure_line
             else:
-                if "value" in ec_en.conditions["visibility"]:
-                    s6 = "VISIBILITY " + ec_en.conditions["visibility"]["value"] + "KM"
-                    s7 = "HUMIDITY " + ec_en.conditions["humidity"]["value"] + "%    DEWPOINT " + ec_en.conditions["dewpoint"]["value"] + "C"
-                    s8 = "PRESSURE " + ec_en.conditions["pressure"]["value"] + "KPA"
-                else:
-                    s6 = "HUMIDITY " + ec_en.conditions["humidity"]["value"] + "%    DEWPOINT " + ec_en.conditions["dewpoint"]["value"] + "C"
-                    s7 = "PRESSURE " + ec_en.conditions["pressure"]["value"] + "KPA"
-                    s8 = ""
-            s7 = "HUMIDITY " + ec_en.conditions["humidity"]["value"] + "%    DEWPOINT " + ec_en.conditions["dewpoint"]["value"] + "C"
-            s8 = "PRESSURE " + ec_en.conditions["pressure"]["value"] + "KPA"
+                s6 = humidity_dewpoint_line 
+                s7 = pressure_line
+                s8 = ""
+
+
     if time_sec >= 30:
         weathercol = "Red"
         if (time_min % 2) == 0: # screen 2 -- text summary forecasts continued
+            print(time.strftime("%H:%M:%S"), 'Displaying screen 2 - forecast summary part 2')
             s1 = s[280:315]
             s2 = s[315:350]
             s3 = s[350:385]
@@ -129,10 +190,11 @@ def weather_page():
             s7 = s[490:525]
             s8 = s[525:560]
         else: # screen 4 -- static channel listing page
+            print(time.strftime("%H:%M:%S"), 'Displaying screen 4 - channel listing')
             
             # update weather info between weather screens
-            ec_en.update()
-            print("weather updated 2nd")
+            print("Updating weather")
+            asyncio.run(ec_en.update())
 
             s1 = "==========CHANNEL LISTING=========="
             s2 = "3.1  SRC(CBWFT)    20   SEINFELD"
@@ -145,7 +207,6 @@ def weather_page():
 
 
     # create the canvas for middle page text
-
     weather = Canvas(root, height=270, width=720, bg=weathercol)
     weather.place(x=0, y=100)
     weather.config(highlightbackground=weathercol)
@@ -162,10 +223,12 @@ def weather_page():
     
     root.after(30000, weather_page) # re-run every 30sec from program launch
 
+#####################################################################################################
+
 # setup main stuff
 
 root = Tk()
-root.attributes('-fullscreen',True)
+root.attributes('-fullscreen',False)
 root.geometry("720x480")
 root.config(cursor="none", bg="green")
 root.wm_title("wpg-weatherchan_V0.0.17")
@@ -181,13 +244,22 @@ clock()
 Title = Label(root, text="ENVIRONMENT CANADA", font=("VCR OSD Mono", 22), fg="white", bg="green")
 Title.place(x=80, y=55)
 
-# use ECData to gather weather data, station_id is from the csv file provided with ECDada -- homepage: https://github.com/michaeldavie/env_canada
+# use ECWeather to gather weather data, station_id is from the csv file provided with ECDada -- homepage: https://github.com/michaeldavie/env_canada
 
-ec_en = ECData(station_id='MB/s0000193', language='english')
-ec_en.update()
+toronto  = ('Toronto',  'ON/s0000458')
+winnipeg = ('Winnipeg', 'MB/s0000193')
+
+# SET STATION HERE
+station = toronto
+
+station_name = station[0] 
+station_id   = station[1]
+
+ec_en = ECWeather(station_id=station_id, language='english')
+print("Updating weather at start, location:", station_id)
+asyncio.run(ec_en.update())
 
 # Middle Section (Cycling weather pages, every 30sec)
-
 weather_page()
 
 # scrolling text canvas
